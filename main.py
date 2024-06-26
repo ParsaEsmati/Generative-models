@@ -60,6 +60,7 @@ class VAE_Decoder(nn.Module):
         x = self.fc2(x)
         return torch.sigmoid(x)  # Assuming normalized output
 
+
 class VAE(nn.Module):
     def __init__(self, input_dim, hidden_dim, latent_dim, observable_size):
         super(VAE, self).__init__()
@@ -78,34 +79,88 @@ class VAE(nn.Module):
         return recon_x, mu, sigma
 
     def loss_function(self, recon_x, x, mu, sigma):
-        BCE = torch.nn.functional.binary_cross_entropy(recon_x, x, reduction='sum')
+        BCE = torch.nn.functional.MSELoss(recon_x, x, reduction='sum')
         KLD = -0.5 * torch.sum(1 + sigma - mu.pow(2) - sigma.exp())
         return BCE + KLD
 
 
-class ImageDataset(Dataset):
-    def __init__(self, img_dir, transform=None):
-        self.img_dir = img_dir
-        self.transform = transform
-        self.img_labels = os.listdir(img_dir)
+def is_image_file(filename):
+    return any(filename.endswith(extension) for extension in [".png", ".jpg", ".jpeg"])
+
+
+def load_img(filepath):
+    img = Image.open(filepath).convert('RGB') ## What's YCbCr: luminance + blue and red color
+    return img
+
+
+def tens2PIL_display(tensor):
+
+    to_pil = transforms.ToPILImage()
+    pil_img = to_pil(tensor)
+    
+    pil_img.show()
+    
+    plt.imshow(pil_img)
+    plt.axis('off')
+    plt.show()
+
+
+def create_dataloader(dataset, batch_size, shuffle=True):
+    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
+
+
+class DatasetFromFolder(Dataset):
+    def __init__(self, input_dir, target_dir=None, input_transform=None, target_transform=None):
+        super(DatasetFromFolder, self).__init__()
+
+        self.input_filenames = [join(input_dir, x) for x in sorted(listdir(input_dir)) if is_image_file(x)]
+
+        if target_dir is not None:
+            self.target_filenames = [join(target_dir, x) for x in sorted(listdir(target_dir)) if is_image_file(x)]
+        else:
+            self.target_filenames = self.input_filenames.copy()
+
+        self.input_transform = input_transform
+        self.target_transform = target_transform
+
+    def __getitem__(self, index):
+        input = load_img(self.input_filenames[index])
+        target = load_img(self.target_filenames[index])
+
+        if self.input_transform:
+            input = self.input_transform(input)
+        if self.target_transform:
+            target = self.target_transform(target)
+
+        return input, target
 
     def __len__(self):
-        return len(self.img_labels)
+        return len(self.input_filenames)
 
-    def __getitem__(self, idx):
-        img_path = os.path.join(self.img_dir, self.img_labels[idx])
-        image = Image.open(img_path).convert("RGB")
-        if self.transform:
-            image = self.transform(image)
-        return image, self.img_labels[idx]
 
-transform = transforms.Compose([
-    transforms.Resize((128, 128)),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-])
+def create_dataloader(dataset, batch_size, shuffle=True):
+    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
 
-def create_dataloader(img_dir, batch_size=32, shuffle=True, num_workers=1):
-    dataset = ImageDataset(img_dir=img_dir, transform=transform)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
-    return dataset, dataloader
+
+class Transformations(object):
+    def __init__(self, mean, std):
+        self.mean = mean
+        self.std = std
+        self.totensor = transforms.ToTensor()
+        self.topil = transforms.ToPILImage()
+
+    def __call__(self, img):
+        if isinstance(img, Image.Image):
+            img = self.totensor(img)
+
+        for t, m, s in zip(img, self.mean, self.std):
+            t.sub_(m).div_(s)
+        return img
+
+    def reverse_transformation(self, tensor):
+        for t, m, s in zip(tensor, self.mean, self.std):
+            t.mul_(s).add_(m)
+
+        img = self.topil(tensor)
+        return img
+
