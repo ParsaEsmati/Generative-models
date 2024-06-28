@@ -41,8 +41,8 @@ class VAE_Encoder(nn.Module):
         self.miu = MLP(input_size=input_size, hidden_size=hidden_size, output_size=latent_size)
         self.sigma = MLP(input_size=input_size, hidden_size=hidden_size, output_size=latent_size)
 
-    def forward(self, x): #[B,C,H*W]
-        x_miu, x_sigma = self.miu(x), self.sigma(x) #[B,C,Z]
+    def forward(self, x): 
+        x_miu, x_sigma = self.miu(x), self.sigma(x)
 
         return x_miu, x_sigma
 
@@ -53,12 +53,10 @@ class VAE_Decoder(nn.Module):
         self.decode_mu    = MLP(input_size=input_size, hidden_size=hidden_size, output_size=observable_size)
         self.decode_sigma = MLP(input_size=input_size, hidden_size=hidden_size, output_size=observable_size)
 
-        #self.decode  = MLP(input_size=input_size, hidden_size=hidden_size, output_size=observable_size)
-
-    #### todo: In the continuous case this should again return a distribution? Done
+    #### todo: Comparative study of having decoder as a distribution or point estimation
     def forward(self, x): #[B,C,Z]
-        x_mu    = self.decode_mu(x) #[B,C*H*W]
-        x_sigma = self.decode_sigma(x) #[B,C*H*W]
+        x_mu    = self.decode_mu(x) 
+        x_sigma = self.decode_sigma(x)
 
         #x = self.decode(x)
         return F.sigmoid(x_mu), x_sigma
@@ -76,13 +74,13 @@ class VAE(nn.Module):
         eps = torch.randn_like(std)
         return mu + eps * std
 
-    def forward(self, x): #[B,C,H*W]
+    def forward(self, x):
 
-        mu, sigma = self.encoder(x) #[B,C,Z]
-        z = self.reparameterize(mu, sigma) #[B,C,Z]
-        dec_mu, dec_sigma = self.decoder(z) #[B,C,H*W]
+        mu, sigma = self.encoder(x) 
+        z = self.reparameterize(mu, sigma) 
+        dec_mu, dec_sigma = self.decoder(z)
 
-        return mu, sigma, dec_mu, dec_sigma #[B,C,H*W], [B,C,Z], [B,C,Z]   ## mu and sigma are added here since necessary in loss
+        return mu, sigma, dec_mu, dec_sigma 
 
     def loss_function(self, x, mu, sigma, mu_recon, sigma_recon):
         x_recon = self.reparameterize(mu_recon, sigma_recon)
@@ -99,7 +97,7 @@ def is_image_file(filename):
 
 def load_img(filepath):
     try:
-        img = Image.open(filepath).convert('RGB')## What's YCbCr: luminance + blue and red color
+        img = Image.open(filepath).convert('RGB')
         return img
     except OSError as e:
         print(f"Warning corrupted image {filepath}: {e}")
@@ -147,8 +145,8 @@ class DatasetFromFolder(Dataset):
         target_img = self.data[index]
 
         C, H, W = input_img.shape
-        input_img  = input_img.view(C * H * W)  # [C*H*W]
-        target_img = target_img.view(C * H * W)  # [C*H*W]
+        input_img  = input_img.view(C * H * W)
+        target_img = target_img.view(C * H * W)
 
 
         return input_img, target_img
@@ -242,7 +240,6 @@ validation_dataloader = create_dataloader(validation_dataset, batch_size=16, shu
 test_dataloader = create_dataloader(test_dataset, batch_size=16, shuffle=False)
 
 
-# Assuming image size is 3 x 256 x 256
 input_dim = 1*28*28
 hidden_dim = 400
 latent_dim =  20
